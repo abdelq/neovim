@@ -114,7 +114,8 @@ typedef struct {
   int diff_mode;                        // start with 'diff' set
 
   char *listen_addr;                    // --listen {address}
-  int remote;                           // --remote[-subcmd] {file1} {file2}
+  char *server_addr;                    // --server {address}
+  int remote;                           // --remote[-subcmd] {file1} {file2} ...
 } mparm_T;
 
 // Values for edit_type.
@@ -276,33 +277,8 @@ int main(int argc, char **argv)
   }
 
   server_init(params.listen_addr);
-
-  if (params.remote) {
-    //const char *env_addr = os_getenv("NVIM_LISTEN_ADDRESS");
-    CallbackReader on_data = CALLBACK_READER_INIT;
-    const char *error = NULL;
-    uint64_t rc_id = channel_connect(false, env_addr, true,
-                                     on_data, 50, &error);
-    if (!rc_id) {
-      exit(0);
-    }
-
-    int t_argc = params.remote;
-    Array args = ARRAY_DICT_INIT;
-    String arg_s;
-    for (;t_argc < argc; t_argc++) {
-      arg_s = cstr_to_string(argv[t_argc]);
-      ADD(args, STRING_OBJ(arg_s));
-    }
-
-    Error err;
-    Array a = ARRAY_DICT_INIT;
-    ADD(a, INTEGER_OBJ((int)rc_id));
-    ADD(a, ARRAY_OBJ(args));
-    String s = cstr_to_string("return vim._cs_remote(...)");
-    executor_exec_lua_api(s, a, &err);
-
-    exit(0);
+  if(params.remote){
+    handle_remote_client(params.remote, params.server_addr, argc, argv);
   }
 
   if (GARGCOUNT > 0) {
@@ -759,6 +735,32 @@ static void init_locale(void)
 }
 #endif
 
+/// Handle remote subcommands
+static void handle_remote_client(int remote_args, char *server_addr, int argc, char **argv)
+{
+    CallbackReader on_data = CALLBACK_READER_INIT;
+    const char *error = NULL;
+    uint64_t rc_id = server_addr == NULL ? 0 : channel_connect(false,
+                     server_addr, true, on_data, 50, &error);
+
+    int t_argc = remote_args;
+    Array args = ARRAY_DICT_INIT;
+    String arg_s;
+    for (;t_argc < argc; t_argc++) {
+      arg_s = cstr_to_string(argv[t_argc]);
+      ADD(args, STRING_OBJ(arg_s));
+    }
+
+    Error err;
+    Array a = ARRAY_DICT_INIT;
+    ADD(a, INTEGER_OBJ((int)rc_id));
+    ADD(a, ARRAY_OBJ(args));
+    String s = cstr_to_string("return vim._cs_remote(...)");
+    executor_exec_lua_api(s, a, &err);
+
+    mch_exit(0);
+}
+
 /// Decides whether text (as opposed to commands) will be read from stdin.
 /// @see EDIT_STDIN
 static bool edit_stdin(bool explicit, mparm_T *parmp)
@@ -826,7 +828,8 @@ static void command_line_scan(mparm_T *parmp)
           // "--version" give version message
           // "--noplugin[s]" skip plugins
           // "--cmd <cmd>" execute cmd before vimrc
-          // "--remote" open file on remote instance
+          // "--remote" execute commands remotely on a server
+          // "--server" name of server to send remote commands to
           if (STRICMP(argv[0] + argv_idx, "help") == 0) {
             usage();
             mch_exit(0);
@@ -869,6 +872,9 @@ static void command_line_scan(mparm_T *parmp)
             p_lpl = false;
           } else if (STRNICMP(argv[0] + argv_idx, "remote", 6) == 0) {
             parmp->remote = parmp->argc - argc;
+          } else if (STRNICMP(argv[0] + argv_idx, "server", 6) == 0) {
+            want_argument = true;
+            argv_idx += 6;
           } else if (STRNICMP(argv[0] + argv_idx, "cmd", 3) == 0) {
             want_argument = true;
             argv_idx += 3;
@@ -1125,6 +1131,9 @@ static void command_line_scan(mparm_T *parmp)
             } else if (strequal(argv[-1], "--listen")) {
               // "--listen {address}"
               parmp->listen_addr = argv[0];
+            } else if (strequal(argv[-1], "--server")) {
+              // "--server {address}"
+              parmp->server_addr = argv[0];
             }
             // "--startuptime <file>" already handled
             break;
@@ -1288,6 +1297,8 @@ static void init_params(mparm_T *paramp, int argc, char **argv)
   paramp->use_debug_break_level = -1;
   paramp->window_count = -1;
   paramp->listen_addr = NULL;
+  paramp->server_addr = NULL;
+  paramp->remote = 0;
 }
 
 /// Initialize global startuptime file if "--startuptime" passed as an argument.
@@ -2006,7 +2017,8 @@ static void usage(void)
   mch_msg(_("  --headless            Don't start a user interface\n"));
   mch_msg(_("  --listen <address>    Serve RPC API from this address\n"));
   mch_msg(_("  --noplugin            Don't load plugins\n"));
-  mch_msg(_("  --remote              Open file remotely\n"));
+  mch_msg(_("  --remote[-subcommand] Execute commands remotely on a server\n"));
+  mch_msg(_("  --server <address>    Specify RPC server to send commands to\n"));
   mch_msg(_("  --startuptime <file>  Write startup timing messages to <file>\n"));
   mch_msg(_("\nSee \":help startup-options\" for all options.\n"));
 }
