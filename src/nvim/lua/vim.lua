@@ -182,13 +182,16 @@ local function _cs_remote(rcid, args)
   local f_tab = false
   local command = 'edit '
 
-  local subcmd = string.sub(args[1],10):gsub('-',' ')
+  local subcmd = string.sub(args[1],10)
 
   if subcmd == '' then
+    -- no flags to set
   elseif subcmd == 'tab' then
     f_tab = true
   elseif subcmd == 'silent' then
     f_silent = true
+  elseif subcmd == 'wait' then
+    f_wait = true
   elseif subcmd == 'wait-silent' then
     f_wait = true
     f_silent = true
@@ -213,14 +216,20 @@ local function _cs_remote(rcid, args)
     return
   else
     print('--remote subcommand not found')
-    return
+    return true
   end
 
   table.remove(args,1)
 
   if not f_silent and rcid == 0 then
     print('Remote server does not exist.')
-    return
+    return true
+  end
+
+  -- launch a local instance if --remote-silent
+  -- and no server exists
+  if f_silent and rcid == 0 then
+    return false
   end
 
   if f_tab then command = 'tabedit ' end
@@ -229,7 +238,7 @@ local function _cs_remote(rcid, args)
     __rpcrequest(rcid, 'nvim_command', command .. key)
   end
 
-  return
+  return true
 end
 
 --- Defers the wrapped callback until when the nvim API is safe to call.
