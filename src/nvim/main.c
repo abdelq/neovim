@@ -72,7 +72,6 @@
 #include "nvim/api/private/helpers.h"
 #include "nvim/api/private/handle.h"
 #include "nvim/api/private/dispatch.h"
-#include "nvim/lua/executor.h"
 #ifndef WIN32
 # include "nvim/os/pty_process_unix.h"
 #endif
@@ -278,8 +277,8 @@ int main(int argc, char **argv)
 
   server_init(params.listen_addr);
   if (params.remote) {
-    handle_remote_client(&params, params.remote,
-                         params.server_addr, argc, argv);
+    handle_remote_client(&params, params.server_addr,
+                         params.remote, argc, argv);
   }
 
   if (GARGCOUNT > 0) {
@@ -737,64 +736,64 @@ static void init_locale(void)
 #endif
 
 /// Handle remote subcommands
-static void handle_remote_client(mparm_T *params, int remote_args,
-                                 char *server_addr, int argc, char **argv)
+static void handle_remote_client(mparm_T *params, char *server_addr,
+                                 int remote_args, int argc, char **argv)
 {
-    Object rvobj = OBJECT_INIT;
-    rvobj.data.dictionary = (Dictionary)ARRAY_DICT_INIT;
-    rvobj.type = kObjectTypeDictionary;
-    CallbackReader on_data = CALLBACK_READER_INIT;
+  Object rvobj = OBJECT_INIT;
+  rvobj.data.dictionary = (Dictionary)ARRAY_DICT_INIT;
+  rvobj.type = kObjectTypeDictionary;
+
+  uint64_t rc_id = 0;
+  if (server_addr) {
     const char *error = NULL;
-    uint64_t rc_id = server_addr == NULL ? 0 : channel_connect(false,
-                     server_addr, true, on_data, 50, &error);
+    rc_id = channel_connect(false, server_addr, true,
+                            CALLBACK_READER_INIT, 50, &error); // XXX callback and error
+  }
+  // TODO
+  Array args = ARRAY_DICT_INIT;
+  String arg_s;
+  for (int t_argc = remote_args; t_argc < argc; t_argc++) {
+    arg_s = cstr_to_string(argv[t_argc]);
+    ADD(args, STRING_OBJ(arg_s));
+  }
 
-    Boolean should_exit = true;
-    Boolean tabbed;
-    int files;
+  Error err = ERROR_INIT;
+  Array a = ARRAY_DICT_INIT;
+  ADD(a, INTEGER_OBJ((Integer)rc_id));
+  ADD(a, ARRAY_OBJ(args));
+  String s = cstr_to_string("return vim._cs_remote(...)");
+  Object o = nvim_execute_lua(s, a, &err);
+  api_free_string(s);
+  api_free_array(a);
+  if (o.type == kObjectTypeDictionary) {
+    rvobj.data.dictionary = o.data.dictionary;
+  } else if (!ERROR_SET(&err)) {
+    api_set_error(&err, kErrorTypeException,
+                  "Function returned unexpected value"); // XXX Message
+  }
 
-    int t_argc = remote_args;
-    Array args = ARRAY_DICT_INIT;
-    String arg_s;
-    for (; t_argc < argc; t_argc++) {
-      arg_s = cstr_to_string(argv[t_argc]);
-      ADD(args, STRING_OBJ(arg_s));
+  Boolean should_exit = true;
+  Boolean tabbed = false;
+  Integer files = 0;
+
+  for (size_t i = 0; i < rvobj.data.dictionary.size; i++) {
+    if (strcmp(rvobj.data.dictionary.items[i].key.data, "should_exit") == 0) {
+      should_exit = rvobj.data.dictionary.items[i].value.data.boolean;
+    } else if (strcmp(rvobj.data.dictionary.items[i].key.data, "tabbed") == 0) {
+      // XXX should we check items[i].value.type here?
+      tabbed = rvobj.data.dictionary.items[i].value.data.boolean;
+    } else if (strcmp(rvobj.data.dictionary.items[i].key.data, "files") == 0) {
+      files = rvobj.data.dictionary.items[i].value.data.integer;
     }
+  }
 
-    Error err = ERROR_INIT;
-    Array a = ARRAY_DICT_INIT;
-    ADD(a, INTEGER_OBJ((int)rc_id));
-    ADD(a, ARRAY_OBJ(args));
-    String s = cstr_to_string("return vim._cs_remote(...)");
-    Object o = executor_exec_lua_api(s, a, &err);
-    api_free_string(s);
-    api_free_array(a);
-
-    if (o.type == kObjectTypeDictionary) {
-      rvobj.data.dictionary = o.data.dictionary;
-    } else if (!ERROR_SET(&err)) {
-      api_set_error(&err, kErrorTypeException,
-                    "Function returned unexpected value");
-    }
-
-    for (size_t i = 0; i < rvobj.data.dictionary.size ; i++) {
-      if (strcmp(rvobj.data.dictionary.items[i].key.data, "tabbed") == 0) {
-        // should we check items[i].value.type here?
-        tabbed = rvobj.data.dictionary.items[i].value.data.boolean;
-      } else if (strcmp(rvobj.data.dictionary.items[i].key.data, "should_exit") == 0) {
-        should_exit = rvobj.data.dictionary.items[i].value.data.boolean;
-      } else if (strcmp(rvobj.data.dictionary.items[i].key.data, "files") == 0) {
-        files = (int)rvobj.data.dictionary.items[i].value.data.integer;
-      }
-    }
-
-    if (should_exit) {
-      mch_exit(0);
-    } else {
-      if (tabbed) {
-        params->window_count = files;
-        params->window_layout = WIN_TABS;
-      }
-    }
+  if (should_exit) {
+    mch_exit(0);
+  }
+  if (tabbed) {
+    params->window_count = (int)files; // XXX
+    params->window_layout = WIN_TABS;
+  }
 }
 
 /// Decides whether text (as opposed to commands) will be read from stdin.
