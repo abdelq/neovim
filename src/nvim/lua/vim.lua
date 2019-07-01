@@ -177,70 +177,53 @@ local function __rpcrequest(...)
 end
 
 local function _cs_remote(rcid, args)
-  local f_silent = false
-  local f_wait = false
-  local f_tab = false
-  local should_exit = true
-  local command = 'edit '
+  local tab, wait, silent = false, false, false -- XXX wait is not used yet
 
-  local subcmd = string.sub(args[1],10)
-
+  local subcmd = string.sub(args[1], 10)
   if subcmd == '' then
-    -- no flags to set
+    -- No flags are set -- XXX luacheck
   elseif subcmd == 'tab' then
-    f_tab = true
-  elseif subcmd == 'silent' then
-    f_silent = true
+    tab = true
   elseif subcmd == 'wait' then
-    f_wait = true
-  elseif subcmd == 'wait-silent' then
-    f_wait = true
-    f_silent = true
+    wait = true
+  elseif subcmd == 'silent' then
+    silent = true
   elseif subcmd == 'tab-wait' then
-    f_tab = true
-    f_wait = true
+    tab, wait = true, true
   elseif subcmd == 'tab-silent' then
-    f_tab = true
-    f_silent = true
+    tab, silent = true, true
+  elseif subcmd == 'wait-silent' then
+    wait, silent = true, true
   elseif subcmd == 'tab-wait-silent' then
-    f_tab = true
-    f_wait = true
-    f_silent = true
+    tab, wait, silent = true, true, true
   elseif subcmd == 'send' then
     __rpcrequest(rcid, 'nvim_input', args[2])
-    return { should_exit = should_exit, tabbed = f_tab, files = 0 }
-    -- should we show warning if --server doesn't exist in --send and --expr?
+    return { should_exit = true, tabbed = false, files = 0 }
+    -- XXX should we show warning if --server doesn't exist in --send and --expr?
+    -- XXX what about behavior with random specified files, should files really be 0?
   elseif subcmd == 'expr' then
-    local res = __rpcrequest(rcid, 'vim_eval', args[2])
-    print(res)
-    return { should_exit = should_exit, tabbed = f_tab, files = 0 }
+    print(__rpcrequest(rcid, 'vim_eval', args[2]))
+    return { should_exit = true, tabbed = false, files = 0 }
   else
-    print('--remote subcommand not found')
+    print('--remote subcommand not found') -- XXX return?
   end
 
-  table.remove(args,1)
-
-  if not f_silent and rcid == 0 then
-    print('Remote server does not exist.')
-  end
-
-  if f_silent and rcid == 0 then
-    print('Remote server does not exist. starting new server')
-    should_exit = false
-  end
-
-  if f_tab then command = 'tabedit ' end
-
-  if rcid ~= 0 then
-    for _, key in ipairs(args) do
-      __rpcrequest(rcid, 'nvim_command', command .. key)
+  if rcid == 0 then
+    if silent then
+      return { should_exit = false, tabbed = tab, files = #args - 1 }
+    end
+    print('Remote server does not exist.') -- XXX message
+  else
+    local cmd = tab and 'tabedit ' or 'edit '
+    for i = 2, #args do
+      __rpcrequest(rcid, 'nvim_command', cmd .. args[i])
     end
   end
 
   return {
-    should_exit = should_exit,
-    tabbed = f_tab,
-    files = table.getn(args)
+    should_exit = true,
+    tabbed = tab,
+    files = #args - 1
   }
 end
 
