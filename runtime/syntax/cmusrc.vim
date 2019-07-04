@@ -1,6 +1,7 @@
 " Vim syntax file
+" Maintainer:           Abdelhakim Qbaich <abdelhakim@qbaich.com>
 " Previous Maintainer:  Nikolai Weibull <now@bitwi.se>
-" Latest Revision:      2007-06-17
+" Latest Revision:      2019-07-03
 
 if exists("b:current_syntax")
   finish
@@ -20,11 +21,12 @@ syn match   cmusrcBegin         display '^'
                                 \ skipwhite
 
 syn keyword cmusrcKeyword       contained add
-                                \ nextgroup=cmusrcAddSwitches,cmusrcURI
+                                \ nextgroup=cmusrcAddSwitches,cmusrcFile,
+                                \           cmusrcDirectory,cmusrcURI
                                 \ skipwhite
 
 syn match   cmusrcAddSwitches   contained display '-[lpqQ]'
-                                \ nextgroup=cmusrcURI
+                                \ nextgroup=cmusrcFile,cmusrcDirectory,cmusrcURI
                                 \ skipwhite
 
 syn match   cmusrcURI           contained display '.\+'
@@ -48,15 +50,19 @@ syn match   cmusrcBindKey       contained display '\S\+'
                                 \ skipwhite
 
 syn keyword cmusrcKeyword       contained browser-up colorscheme echo factivate
-                                \ filter invert player-next player-pause
-                                \ player-play player-prev player-stop quit
-                                \ refresh run search-next search-prev shuffle
-                                \ unmark win-activate win-add-l win-add-p
-                                \ win-add-Q win-add-q win-bottom win-down
+                                \ invert pl-create pl-rename player-next
+                                \ player-pause player-pause-playback player-play
+                                \ player-prev player-stop prev-view left-view
+                                \ right-view push pwd quit raise-vte rand
+                                \ refresh run search-next search-prev shell
+                                \ shuffle unmark version win-activate win-add-l
+                                \ win-add-p win-add-Q win-add-q win-bottom
+                                \ win-down win-half-page-down win-half-page-up
                                 \ win-mv-after win-mv-before win-next
-                                \ win-page-down win-page-up win-remove
-                                \ win-sel-cur win-toggle win-top win-up
-                                \ win-update
+                                \ win-page-bottom win-page-down win-page-middle
+                                \ win-page-top win-page-up win-remove
+                                \ win-scroll-down win-scroll-up win-sel-cur
+                                \ win-toggle win-top win-up win-update
 
 syn keyword cmusrcKeyword       contained cd
                                 \ nextgroup=cmusrcDirectory
@@ -68,6 +74,9 @@ syn keyword cmusrcKeyword       contained clear
                                 \ nextgroup=cmusrcClearSwitches
 
 syn match   cmusrcClearSwitches contained display '-[lpq]'
+
+syn keyword cmusrcKeyword       contained filter
+                                \ nextgroup=cmusrcFilterExpr
 
 syn keyword cmusrcKeyword       contained fset
                                 \ nextgroup=cmusrcFSetName
@@ -96,7 +105,7 @@ syn keyword cmusrcKeyword       contained save
                                 \ nextgroup=cmusrcSaveSwitches,cmusrcFile
                                 \ skipwhite
 
-syn match   cmusrcSaveSwitches  contained display '-[lp]'
+syn match   cmusrcSaveSwitches  contained display '-[elLpq]'
                                 \ nextgroup=cmusrcFile
                                 \ skipwhite
 
@@ -244,7 +253,7 @@ syn keyword cmusrcKeyword       contained view
                                 \ skipwhite
 
 syn keyword cmusrcView          contained library playlist queue browser filters
-syn match   cmusrcView          contained display '[1-6]'
+syn match   cmusrcView          contained display '[1-7]'
 
 syn keyword cmusrcKeyword       contained vol
                                 \ nextgroup=cmusrcVolume1
